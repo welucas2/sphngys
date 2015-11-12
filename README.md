@@ -20,12 +20,12 @@ Then, create a reference to a SphngBin object with, eg.:
 binfile = SphngBin(fname = "TEST001")
 
 fname should always be provided to SphngBin. Optional arguments are:
-* contiguous - logical, default True - see below
-* nsinkmax - integer, default 2000 - size of sink arrays
-* igradh - logical, default True - whether to expect grad-h arrays
-* imhd - logical, default False - whether to expect MHD arrays
-* iexf - integer, default 0 - which external force was used, 0 meaning none
-* imigrate - logical, default False - whether planetesimal stuff was going on
+contiguous - logical, default True - see below
+nsinkmax - integer, default 2000 - size of sink arrays
+igradh - logical, default True - whether to expect grad-h arrays
+mhd - logical, default False - whether to expect MHD arrays
+iexf - integer, default 0 - which external force was used, 0 meaning none
+imigrate - logical, default False - whether planetesimal stuff was going on
 
 Care should be taken with the latter three arguments, as they aren't implemented, although the code still has to allow for the possibility. Generally, always leave them with their default values.
 
