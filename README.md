@@ -4,10 +4,13 @@ sphngys is a Python class with which you can quickly read and store data for use
 
 ### Requirements ###
 
-Python 2.6+ (no idea about Python 3)
-numpy
-fortranfile
-colorama (optionally - helps with interpreting prints to STDOUT, comment out if you don't care)
+* Python 2.6+ (no idea about Python 3)
+
+* numpy
+
+* fortranfile
+
+* colorama (optionally - helps with interpreting prints to STDOUT, comment out if you don't care)
 
 ### How to use ###
 
@@ -20,12 +23,18 @@ Then, create a reference to a SphngBin object with, eg.:
 binfile = SphngBin(fname = "TEST001")
 
 fname should always be provided to SphngBin. Optional arguments are:
-1. contiguous - logical, default True - see below
-2. nsinkmax - integer, default 2000 - size of sink arrays
-3. igradh - logical, default True - whether to expect grad-h arrays
-4. mhd - logical, default False - whether to expect MHD arrays
-5. iexf - integer, default 0 - which external force was used, 0 meaning none
-6. imigrate - logical, default False - whether planetesimal stuff was going on
+
+* contiguous - logical, default True - see below
+
+* nsinkmax - integer, default 2000 - size of sink arrays
+
+* igradh - logical, default True - whether to expect grad-h arrays
+
+* imhd - logical, default False - whether to expect MHD arrays
+
+* iexf - integer, default 0 - which external force was used, 0 meaning none
+
+* imigrate - logical, default False - whether planetesimal stuff was going on
 
 Care should be taken with the latter three arguments, as they aren't implemented, although the code still has to allow for the possibility. Generally, always leave them with their default values.
 
