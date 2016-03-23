@@ -28,6 +28,8 @@ fname should always be provided to SphngBin. Optional arguments are:
 
 * nsinkmax - integer, default 2000 - size of sink arrays
 
+* verbosity - 0, 1, 2 for increasing levels of verbosity - 0 for silent running
+
 * igradh - logical, default True - whether to expect grad-h arrays
 
 * imhd - logical, default False - whether to expect MHD arrays
