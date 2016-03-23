@@ -6,9 +6,9 @@ This is based on my Fortran module rbin.f90 rather than directly on
 rdump.F from within the sphNG code itself.
 
 Created: 25 February 2015
-Last modified: 7 March 2015
+Last modified: 23 March 2016
 
-Revision list:
+Revision list: Added verbosity option.
 Bugs:
 Future: - allow for different default real size? specify as an input parameter.
 """
@@ -19,7 +19,7 @@ import numpy as np
 import fortranfile as ff
 
 class SphngBin:
-    def __init__(self, fname=None, contiguous=None, nsinkmax=None, igradh=None, imhd=None, iexf=None, imigrate=None):
+    def __init__(self, fname=None, contiguous=None, verbosity=None, nsinkmax=None, igradh=None, imhd=None, iexf=None, imigrate=None):
         """
         Called at the time of the object's creation. Sets important parameters
         such as how to treat MPI files and whether gradh SPH was used.
@@ -34,6 +34,12 @@ class SphngBin:
         #   if false, the file will be read block-by-block
         if contiguous is None:
             contiguous = True
+        # verbosity determines how much information to print to STDOUT while reading.
+        #   if verbosity = 0, silent operation: nothing at all is printed
+        #   if verbosity = 1, print filenames and blocks
+        #   if verbosity = 2, print filenames, blocks and information from arrays
+        if verbosity is None:
+            verbosity = 1
         # nsinkmax is the size of sink arrays, hence the maximum number which may be stored.
         if nsinkmax is None:
             nsinkmax = 2000
@@ -53,6 +59,7 @@ class SphngBin:
         # Now set the class variables to the arguments.
         self.fname = fname
         self.contiguous = contiguous
+        self.verbosity = verbosity
         self.nsinkmax = nsinkmax
         self.igradh = igradh
         self.imhd = imhd
@@ -128,18 +135,30 @@ class SphngBin:
         # Open the file to get things going.
         self.__open_file()
 
+    def __verbprint(self, targetverb, *args):
+        """
+        Prints a list of arguments to screen only if self.verbosity >= targetverb.
+        A call with no *args will simply move to the next line.
+        """
+        if self.verbosity >= targetverb:
+            # Print all given arguments on the same line.
+            for arg in args:
+                print arg,
+            # Then move onto a new line.
+            print
+
     def __open_file(self):
         """
         Opens the file as a FortranFile object.
         """
         colorama.init()
-        print colorama.Fore.RED + "OPENING BINARY:", self.fname + colorama.Style.RESET_ALL
+        self.__verbprint(1, colorama.Fore.RED + "OPENING BINARY: " + self.fname + colorama.Style.RESET_ALL)
         colorama.deinit()
         try:
             self.binfile = ff.FortranFile(self.fname)
         except IOError:
             sys.exit("Error opening file - check it exists!")
-        print "File open"
+        self.__verbprint(1, "File open")
 
     def read_header(self):
         """
@@ -147,19 +166,19 @@ class SphngBin:
         MPI blocks, etc.
         """
         colorama.reinit()
-        print colorama.Fore.RED + "Starting header read sequence." + colorama.Style.RESET_ALL
+        self.__verbprint(1, colorama.Fore.RED + "Starting header read sequence." + colorama.Style.RESET_ALL)
         colorama.deinit()
         self.binfile.readRecord()
         self.fileident = self.binfile.readString()
-        print "IDENTITY:", self.fileident.strip()
+        self.__verbprint(1, "IDENTITY:", self.fileident.strip())
         if self.fileident[0] != "F":
             sys.exit("File does not contain a full dump, exiting!")
         if self.fileident[1] == "T":
             self.tagged = True
-            print "File is tagged."
+            self.__verbprint(2, "File is tagged.")
         else:
             self.tagged = False
-            print "File is NOT tagged."
+            self.__verbprint(2, "File is NOT tagged.")
 
         number = self.binfile.readInts()[0]
         if self.tagged:
@@ -175,7 +194,7 @@ class SphngBin:
             self.nblocks = 1
         else:
             self.nblocks = buff[6]
-        print "NPARTTOT", self.nparttot, "NBLOCKS", self.nblocks
+        self.__verbprint(1, "NPARTTOT", self.nparttot, "NBLOCKS", self.nblocks)
         self.npartblocks = np.zeros(self.nblocks, dtype="i4")
 
         self.binfile.readRecord()
@@ -188,15 +207,15 @@ class SphngBin:
             self.iuniquemax = self.binfile.readInts()[0]
         else:
             self.iuniquemax = self.nparttot
-        print "iuniquemax", self.iuniquemax
+        self.__verbprint(2, "iuniquemax", self.iuniquemax)
 
         number = self.binfile.readInts()[0]
         if self.tagged:
-            print "Reading", number, "tags from file."
+            self.__verbprint(2, "Reading", number, "tags from file.")
             tagsreal = self.binfile.readString().split()
         else:
-            print "Simulating tags for non-tagged file."
-            print "number =", number
+            self.__verbprint(2, "Simulating tags for non-tagged file.")
+            self.__verbprint(2, "number =", number)
             tagsreal = ["gt", "dtmax", "gamma", "rhozero", "RK2", "escap",
                         "tkin", "tgrav", "tterm", "anglostx", "anglosty",
                         "anglostz", "specang", "ptmassin", "tmag", "Bextx",
@@ -204,7 +223,7 @@ class SphngBin:
                         "gapfac", "pmassinitial", "sdprof", "rorbit_orig",
                         "min_rplan", "max_rplan", "planetesimalmasscoremass_orig",
                         "coremass"]
-        print "TAGS:", tagsreal
+        self.__verbprint(2, "TAGS:", tagsreal)
 
         # Read the block of reals containing header data. Note we have
         # to specify double precision here.
@@ -213,7 +232,7 @@ class SphngBin:
             self.gt = rheader[tagsreal.index("gt")]
         except ValueError:
             sys.exit("gt not found in header, exiting")
-        print "Time is", self.gt
+        self.__verbprint(2, "Time is", self.gt)
         try:
             self.dtmax = rheader[tagsreal.index("dtmax")]
         except ValueError:
@@ -244,18 +263,18 @@ class SphngBin:
             self.Bextx = rheader[tagsreal.index("Bextx")]
             self.Bexty = rheader[tagsreal.index("Bexty")]
             self.Bextz = rheader[tagsreal.index("Bextz")]
-            print "External field found, Bextx =", self.Bextx, self.Bexty, self.Bextz
+            self.__verbprint(2, "External field found, Bextx =", self.Bextx, self.Bexty, self.Bextz)
         self.hzero = rheader[tagsreal.index("hzero")] if len(rheader) > tagsreal.index("hzero") else 0.
         self.uzero_n2 = rheader[tagsreal.index("uzero_n2")] if len(rheader) > tagsreal.index("uzero_n2") else 0.
         if self.uzero_n2 > 0.:
-            print "u for surrounding medium =", self.uzero_n2
+            self.__verbprint(2, "u for surrounding medium =", self.uzero_n2)
         self.hmass = rheader[tagsreal.index("hmass")] if len(rheader) > tagsreal.index("hmass") else 0.
         self.gapfac = rheader[tagsreal.index("gapfac")] if len(rheader) > tagsreal.index("gapfac") else 0.
         try:
             self.sdprof = rheader[tagsreal.index("sdprof")] if len(rheader) > tagsreal.index("sdprof") else 0.
         except ValueError:
             self.sdprof = -0.5
-            print "Surface density pre vary (goes as r^-0.5)"
+            self.__verbprint(2, "Surface density pre vary (goes as r^-0.5)")
         self.rorbit_orig = rheader[tagsreal.index("rorbit_orig")] if len(rheader) > tagsreal.index("rorbit_orig") else 0.
         # CHECK THE NEXT BLOCK OF CODE IF ACTUALLY USING PLANETESIMALS
         if self.imigrate:
@@ -265,31 +284,33 @@ class SphngBin:
         if self.imigrate:
             try:
                 self.min_rplan = rheader[tagsreal.index("min_rplan")]
-                print "r_min =", self.min_rplan
+                self.__verbprint(2, "r_min =", self.min_rplan)
             except IndexError:
                 pass
             try:
                 self.max_rplan = rheader[tagsreal.index("max_rplan")]
-                print "r_max =", self.max_rplan
+                self.__verbprint(2, "r_max =", self.max_rplan)
             except IndexError:
                 pass
             if not self.tagged:
-                print "DO NOT USE CODE WITH DUMPS MADE FROM APRIL 2011"
-                print "AND BEFORE 16/05/2011. For these, reals 26, 27 are"
-                print "planetesimal radius and density respectively."
+                # At the moment this prints no matter the verbosity. Change in future
+                # if it's a problem.
+                self.__verbprint(0, "DO NOT USE CODE WITH DUMPS MADE FROM APRIL 2011")
+                self.__verbprint(0, "AND BEFORE 16/05/2011. For these, reals 26, 27 are")
+                self.__verbprint(0, "planetesimal radius and density respectively.")
             try:
                 self.planetesimalmass = rheader[tagsreal.index("planetesimalmass")]
-                print "Planetesimal mass", self.planetesimalmass
+                self.__verbprint(2, "Planetesimal mass", self.planetesimalmass)
             except IndexError:
                 pass
             try:
                 self.coremass_orig = rheader[tagsreal.index("coremass_orig")]
-                print "Core mass orig", self.coremass_orig
+                self.__verbprint(2, "Core mass orig", self.coremass_orig)
             except IndexError:
                 pass
             try:
                 self.coremass = rheader[tagsreal.index("coremass")]
-                print "Core mass running record", self.coremass
+                self.__verbprint(2, "Core mass running record", self.coremass)
             except IndexError:
                 pass
 
@@ -307,12 +328,12 @@ class SphngBin:
             if number > 3:
                 self.umagfd = buff[3]
             else:
-                print "WARNING: no mag field units in rdump"
-        print "Distance, mass, time units are:", self.udist, self.umass, self.utime
+                self.__verbprint(0, "WARNING: no mag field units in rdump")
+        self.__verbprint(2, "Distance, mass, time units are:", self.udist, self.umass, self.utime)
 
         number = self.binfile.readInts()[0]
         self.numberarray = number / self.nblocks
-        print "Array types", number, self.numberarray
+        self.__verbprint(2, "Array types", number, self.numberarray, "\n")
 
         # AT THIS POINT, WE ARE AT THE START OF THE DATA
         self.icount = 0
@@ -329,7 +350,7 @@ class SphngBin:
         slowly rather than constantly make them larger whenever we move onto
         the next block.
         """
-        print "ALLOCATING HYDRO ARRAYS WITH", nentries, "ENTRIES"
+        self.__verbprint(2, "ALLOCATING HYDRO ARRAYS WITH", nentries, "ENTRIES")
         self.isteps = np.empty(nentries, dtype="i4")
         self.iphase = np.empty(nentries, dtype="i1")
         self.iunique = np.empty(nentries, dtype="i8")
@@ -348,7 +369,7 @@ class SphngBin:
         """
         Create RT arrays much the same way as in __create_hydro_arrays.
         """
-        print "ALLOCATING RT ARRAYS WITH", nentries, "ENTRIES"
+        self.__verbprint(2, "ALLOCATING RT ARRAYS WITH", nentries, "ENTRIES")
         self.nneigh = np.empty(nentries, dtype="i2")
         self.e = np.empty(nentries, dtype="f8")
         self.rkappa = np.empty(nentries, dtype="f8")
@@ -368,7 +389,7 @@ class SphngBin:
         Read a single block of data into memory.
         """
         colorama.reinit()
-        print colorama.Fore.RED + "\nReading block", self.iblock, colorama.Style.RESET_ALL
+        self.__verbprint(1, colorama.Fore.RED + "Reading block", self.iblock, colorama.Style.RESET_ALL)
         colorama.deinit()
 
         # The record is mixed between integer*8 for number8 and integer*4 for the nums,
@@ -376,17 +397,17 @@ class SphngBin:
         buff = self.binfile.readRecord()
         number8 = np.fromstring(buff[0:8], dtype=self.binfile.ENDIAN + "q")[0]
         nums = np.fromstring(buff[8:40], dtype=self.binfile.ENDIAN + "i")
-        print self.nparttot, self.nblocks, self.iblock, number8, number8 * self.nblocks
+        self.__verbprint(2, self.nparttot, self.nblocks, self.iblock, number8, number8 * self.nblocks)
         self.npart = number8
         self.npartblocks[self.iblock] = number8
-        print "Block contains", number8, "particles, current icount", self.icount
-        print "nums", nums
+        self.__verbprint(2, "Block contains", number8, "particles, current icount", self.icount)
+        self.__verbprint(2, "nums", nums)
 
         # Number of sinks
         buff = self.binfile.readRecord()
         number8 = np.fromstring(buff[0:8], dtype=self.binfile.ENDIAN + "q")[0]
         numssink = np.fromstring(buff[8:40], dtype=self.binfile.ENDIAN + "i")
-        print "numssink", numssink
+        self.__verbprint(2, "numssink", numssink)
         self.nptmass = number8
 
         # Radiative transfer bits
@@ -394,7 +415,7 @@ class SphngBin:
             buff = self.binfile.readRecord()
             number8 = np.fromstring(buff[0:8], dtype=self.binfile.ENDIAN + "q")[0]
             numsRT = np.fromstring(buff[8:40], dtype=self.binfile.ENDIAN + "i")
-            print "numsRT", numsRT
+            self.__verbprint(2, "numsRT", numsRT)
 
         ic1 = self.icount
         ic2 = self.icount + 3
@@ -415,13 +436,13 @@ class SphngBin:
         if self.tagged:
             tagi = self.binfile.readRecord()
         self.isteps[self.icount:self.icount + self.npart] = self.binfile.readInts(prec="i")
-        print "isteps", self.isteps[ic1:ic2]
+        self.__verbprint(2, "isteps", self.isteps[ic1:ic2])
 
         # Skip reading listinactive
         if nums[0] >= 2:
             if self.tagged:
                 self.binfile.readRecord()
-            print "Skipping listinactive"
+            self.__verbprint(2, "Skipping listinactive")
             self.binfile.readRecord()
 
         # Read particle phases
@@ -430,7 +451,7 @@ class SphngBin:
             tagi = self.binfile.readRecord()
         buff = self.binfile.readRecord()
         self.iphase[self.icount:self.icount + self.npart] = np.fromstring(buff, dtype=self.binfile.ENDIAN + "b")
-        print "iphase", self.iphase[ic1:ic2]
+        self.__verbprint(2, "iphase", self.iphase[ic1:ic2])
 
         # Particle iuniques, only in versions post-MPI incorporation I believe
         if nums[4] >= 1:
@@ -438,7 +459,7 @@ class SphngBin:
                 self.binfile.readRecord()
             buff = self.binfile.readRecord()
             self.iunique[self.icount:self.icount + self.npart] = np.fromstring(buff, dtype=self.binfile.ENDIAN + "q")
-            print"iunique", self.iunique[ic1:ic2]
+            self.__verbprint(2, "iunique", self.iunique[ic1:ic2])
 
         # Position, mass, smoothing length
         # NB the arrays are now stored in row-major order (Python/C) in order
@@ -448,23 +469,23 @@ class SphngBin:
             if self.tagged:
                 self.binfile.readRecord()
             self.xyzmh[self.icount:self.icount + self.npart, i] = self.binfile.readReals("d")
-        print "x:", self.xyzmh[ic1:ic2, 0]
-        print "m:", self.xyzmh[ic1:ic2, 3]
-        print "h:", self.xyzmh[ic1:ic2, 4]
+        self.__verbprint(2, "x:", self.xyzmh[ic1:ic2, 0])
+        self.__verbprint(2, "m:", self.xyzmh[ic1:ic2, 3])
+        self.__verbprint(2, "h:", self.xyzmh[ic1:ic2, 4])
 
         # Velocity, internal energy
         for i in range(4):
             if self.tagged:
                 self.binfile.readRecord()
             self.vxyzu[self.icount:self.icount + self.npart, i] = self.binfile.readReals("d")
-        print "vx:", self.vxyzu[ic1:ic2, 0]
-        print "u:", self.vxyzu[ic1:ic2, 3]
+        self.__verbprint(2, "vx:", self.vxyzu[ic1:ic2, 0])
+        self.__verbprint(2, "u:", self.vxyzu[ic1:ic2, 3])
 
         # Rho
         if self.tagged:
             self.binfile.readRecord()
         self.rho[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
-        print "rho:", self.rho[ic1:ic2]
+        self.__verbprint(2, "rho:", self.rho[ic1:ic2])
         iread = 1
 
         # gradh and gradhs if sphNG ran in gradh mode;
@@ -474,7 +495,7 @@ class SphngBin:
                 if self.tagged:
                     self.binfile.readRecord()
                 self.gradh[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
-                print "gradh:", self.gradh[ic1:ic2]
+                self.__verbprint(2, "gradh:", self.gradh[ic1:ic2])
                 iread = iread + 1
             if nums[6] >= 3:
                 if self.tagged:
@@ -483,15 +504,15 @@ class SphngBin:
                 if self.tagged:
                     # Following line is only good for Python 2.7+
                     # print "{}:".format(tagi), self.gradhs[ic1:ic2]
-                    print tagi.replace(" ", "") + ":", self.gradhs[ic1:ic2]
+                    self.__verbprint(2, tagi.replace(" ", "") + ":", self.gradhs[ic1:ic2])
                 else:
-                    print "gradhs:", self.gradhs[ic1:ic2]
+                    self.__verbprint(2, "gradhs:", self.gradhs[ic1:ic2])
                 iread = iread + 1
         else:
             if self.tagged:
                 self.binfile.readRecord()
             self.dgrav[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
-            print "dgrav:", self.dgrav[ic1:ic2]
+            self.__verbprint(2, "dgrav:", self.dgrav[ic1:ic2])
             iread = 2
 
         # alphaMM
@@ -499,17 +520,17 @@ class SphngBin:
             if self.tagged:
                 self.binfile.readRecord()
             self.alphaMM[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
-            print "alphaMM:", self.alphaMM[ic1:ic2]
+            self.__verbprint(2, "alphaMM:", self.alphaMM[ic1:ic2])
 
         # potens for Duncan, if they exist
         if nums[6] >= 5:
             if self.tagged:
                 self.binfile.readRecord()
             self.poten[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
-            print "poten:", self.poten[ic1:ic2]
+            self.__verbprint(2, "poten:", self.poten[ic1:ic2])
 
         # SINK PARTICLE DATA
-        print "Reading sink particle data for", self.nptmass, "sinks."
+        self.__verbprint(2, "Reading sink particle data for", self.nptmass, "sinks.")
         if self.tagged:
             self.binfile.readRecord()
         self.listpm[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readInts()
@@ -556,7 +577,7 @@ class SphngBin:
         # I think it's been wrong since the old original F77 code and no one's bothered with
         # it because none of us use RT.
         if self.numberarray == 3:
-            print "Reading RT data...", self.numberarray
+            self.__verbprint(2, "Reading RT data...", self.numberarray)
             if numsRT[2] == 1:
                 self.nneigh[self.icount:self.icount + self.npart] = self.binfile.readInts("h")
             self.e[self.icount:self.icount + self.npart] = self.binfile.readReals("d")
@@ -591,7 +612,7 @@ class SphngBin:
             self.icountsink = 0
         self.iblock += 1
 
-        print "Block finished.\n"
+        self.__verbprint(2, "Block finished.\n")
 
         return 0
 
@@ -603,7 +624,7 @@ class SphngBin:
         more than one block actually exists.
         """
         if self.iblock >= self.nblocks:
-            print "Error: entire file has already been read!"
+            self.__verbprint(0, "Error: entire file has already been read!")
             return 1
         if not self.contiguous or self.nblocks == 1:
             # If reading only one block at a time, or if only one block exists,
@@ -616,6 +637,8 @@ class SphngBin:
                 ierr = self.__read_block()
                 if ierr != 0:
                     sys.exit("Error reading block " + str(i))
+        self.__verbprint(1)
+        self.__verbprint(2)
         return ierr
 
 if __name__ == "__main__":
