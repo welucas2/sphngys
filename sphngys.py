@@ -639,6 +639,8 @@ class SphngBin:
                 ierr = self.__read_block()
                 if ierr != 0:
                     sys.exit("Error reading block " + str(i))
+            # Copy icountsink into nptmass for easier use
+            self.nptmass = self.icountsink
         self.__verbprint(1)
         self.__verbprint(2)
         return ierr
