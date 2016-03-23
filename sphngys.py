@@ -40,6 +40,8 @@ class SphngBin:
         #   if verbosity = 2, print filenames, blocks and information from arrays
         if verbosity is None:
             verbosity = 1
+        elif verbosity < 0 or verbosity > 2:
+            sys.exit("verbosity must be 0, 1 or 2")
         # nsinkmax is the size of sink arrays, hence the maximum number which may be stored.
         if nsinkmax is None:
             nsinkmax = 2000
