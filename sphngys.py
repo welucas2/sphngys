@@ -134,6 +134,9 @@ class SphngBin:
         self.icountsink = None
         self.iblock = None
 
+        # Variable notes whether potens are available
+        self.potenavail = None
+
         # Open the file to get things going.
         self.__open_file()
 
@@ -530,6 +533,9 @@ class SphngBin:
                 self.binfile.readRecord()
             self.poten[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
             self.__verbprint(2, "poten:", self.poten[ic1:ic2])
+            self.potenavail = True
+        else:
+            self.potenavail = False
 
         # SINK PARTICLE DATA
         self.__verbprint(2, "Reading sink particle data for", self.nptmass, "sinks.")
