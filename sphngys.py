@@ -6,7 +6,7 @@ This is based on my Fortran module rbin.f90 rather than directly on
 rdump.F from within the sphNG code itself.
 
 Created: 25 February 2015
-Last modified: 17 June 2016
+Last modified: 21 June 2016
 
 Revision list: Added verbosity option.
 Bugs:
@@ -162,7 +162,7 @@ class SphngBin:
         try:
             self.binfile = ff.FortranFile(self.fname)
         except IOError:
-            sys.exit("Error opening file - check it exists!")
+            sys.exit("Error opening " + self.fname + " - check it exists!")
         self.__verbprint(1, "File open")
 
     def read_header(self):
