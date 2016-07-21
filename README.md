@@ -49,9 +49,7 @@ The logical variable 'contiguous' should be considered when working with files u
 
 ### For the future ###
 
-???
-
-Any suggestions?
+Create a new method to write sphNG binaries. This should allow use of Python as a potentially costly but simple replacement for extract.f or even setpart.F.
 
 ### Who do I talk to? ###
 
