@@ -6,7 +6,6 @@ This is based on my Fortran module rbin.f90 rather than directly on
 rdump.F from within the sphNG code itself.
 
 Created: 25 February 2015
-Last modified: 21 June 2016
 
 Revision list: Added verbosity option.
 Bugs:
