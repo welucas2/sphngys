@@ -80,6 +80,7 @@ class SphngBin:
         self.spinadx = np.empty(self.nsinkmax, dtype="f8")
         self.spinady = np.empty(self.nsinkmax, dtype="f8")
         self.spinadz = np.empty(self.nsinkmax, dtype="f8")
+        self.sink_create_time = np.empty(self.nsinkmax, dtype="f8")
 
         # Declare ALL the variables here in the constructor, just because it's good practice (apparently).
         self.binfile = None
@@ -570,6 +571,13 @@ class SphngBin:
         if self.tagged:
             self.binfile.readRecord()
         self.spinadz[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readReals("d")
+
+        # If there is another real array, it's sink_create_time which is used for
+        # supernova runs. Read it.
+        if numssink[5] == 10:
+            if self.tagged:
+                self.binfile.readRecord()
+            self.sink_create_time[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readReals("d")
 
         # This point onwards is a mystery; I've commented out the next few lines as they seem to
         # not be represented in a 'modern' rdump.F.
