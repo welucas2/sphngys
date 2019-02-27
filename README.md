@@ -8,6 +8,8 @@ sphngys is a Python class with which you can quickly read and store data for use
 
 * numpy
 
+* scipy
+
 * colorama (optionally - helps with interpreting prints to STDOUT, comment out if you don't care)
 
 ### How to use ###
