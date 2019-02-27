@@ -15,7 +15,7 @@ Future: - allow for different default real size? specify as an input parameter.
 import sys
 import colorama
 import numpy as np
-import fortranfile as ff
+from scipy.io import FortranFile
 
 class SphngBin:
     def __init__(self, fname=None, contiguous=None, verbosity=None, nsinkmax=None, igradh=None, imhd=None, iexf=None, imigrate=None):
@@ -160,7 +160,7 @@ class SphngBin:
         self.__verbprint(1, colorama.Fore.RED + "OPENING BINARY: " + self.fname + colorama.Style.RESET_ALL)
         colorama.deinit()
         try:
-            self.binfile = ff.FortranFile(self.fname)
+            self.binfile = FortranFile(self.fname, 'r')
         except IOError:
             sys.exit("Error opening " + self.fname + " - check it exists!")
         self.__verbprint(1, "File open")
@@ -173,8 +173,8 @@ class SphngBin:
         colorama.reinit()
         self.__verbprint(1, colorama.Fore.RED + "Starting header read sequence." + colorama.Style.RESET_ALL)
         colorama.deinit()
-        self.binfile.readRecord()
-        self.fileident = self.binfile.readString()
+        self.binfile.read_ints() # skip record
+        self.fileident = self.binfile.read_record([('ident', 'S100')])['ident'][0]
         self.__verbprint(1, "IDENTITY:", self.fileident.strip())
         if self.fileident[0] != "F":
             sys.exit("File does not contain a full dump, exiting!")
@@ -185,10 +185,10 @@ class SphngBin:
             self.tagged = False
             self.__verbprint(2, "File is NOT tagged.")
 
-        number = self.binfile.readInts()[0]
+        number = self.binfile.read_ints()[0]
         if self.tagged:
-            self.binfile.readRecord()
-        buff = self.binfile.readInts()
+            self.binfile.read_ints()
+        buff = self.binfile.read_ints()
         self.nparttot = buff[0]
         self.n1 = buff[1]
         self.n2 = buff[2]
@@ -202,22 +202,23 @@ class SphngBin:
         self.__verbprint(1, "NPARTTOT", self.nparttot, "NBLOCKS", self.nblocks)
         self.npartblocks = np.zeros(self.nblocks, dtype="i4")
 
-        self.binfile.readRecord()
-        self.binfile.readRecord()
-        self.binfile.readRecord()
-        number = self.binfile.readInts()[0]
+        self.binfile.read_ints()
+        self.binfile.read_ints()
+        self.binfile.read_ints()
+        number = self.binfile.read_ints()[0]
         if number == 1:
             if self.tagged:
-                self.binfile.readRecord()
-            self.iuniquemax = self.binfile.readInts()[0]
+                self.binfile.read_ints()
+            self.iuniquemax = self.binfile.read_ints()[0]
         else:
             self.iuniquemax = self.nparttot
         self.__verbprint(2, "iuniquemax", self.iuniquemax)
 
-        number = self.binfile.readInts()[0]
+        number = self.binfile.read_ints()[0]
         if self.tagged:
             self.__verbprint(2, "Reading", number, "tags from file.")
-            tagsreal = self.binfile.readString().split()
+            #tagsreal = self.binfile.readString().split()
+            tagsreal = self.binfile.read_record() # this likely won't work as-is!
         else:
             self.__verbprint(2, "Simulating tags for non-tagged file.")
             self.__verbprint(2, "number =", number)
@@ -232,7 +233,7 @@ class SphngBin:
 
         # Read the block of reals containing header data. Note we have
         # to specify double precision here.
-        rheader = self.binfile.readReals("d")
+        rheader = self.binfile.read_reals("d")
         try:
             self.gt = rheader[tagsreal.index("gt")]
         except ValueError:
@@ -319,13 +320,13 @@ class SphngBin:
             except IndexError:
                 pass
 
-        self.binfile.readRecord()
-        number = self.binfile.readInts()[0]
+        self.binfile.read_ints()
+        number = self.binfile.read_ints()[0]
         if number < 3:
             sys.exit("Error in rbin, nreal8 too small in header section")
         if self.tagged:
-            self.binfile.readRecord()
-        buff = self.binfile.readReals("d")
+            self.binfile.read_ints()
+        buff = self.binfile.read_reals("d")
         self.udist = buff[0]
         self.umass = buff[1]
         self.utime = buff[2]
@@ -336,7 +337,7 @@ class SphngBin:
                 self.__verbprint(0, "WARNING: no mag field units in rdump")
         self.__verbprint(2, "Distance, mass, time units are:", self.udist, self.umass, self.utime)
 
-        number = self.binfile.readInts()[0]
+        number = self.binfile.read_ints()[0]
         self.numberarray = number / self.nblocks
         self.__verbprint(2, "Array types", number, self.numberarray, "\n")
 
@@ -398,10 +399,10 @@ class SphngBin:
         colorama.deinit()
 
         # The record is mixed between integer*8 for number8 and integer*4 for the nums,
-        # so we need to extract them manually from the record.
-        buff = self.binfile.readRecord()
-        number8 = np.fromstring(buff[0:8], dtype=self.binfile.ENDIAN + "q")[0]
-        nums = np.fromstring(buff[8:40], dtype=self.binfile.ENDIAN + "i")
+        # so we need to extract them from the record.
+        buff = self.binfile.read_record([('number8', 'i8'), ('nums', 'i4', (8))])
+        number8 = buff['number8'][0]
+        nums = buff['nums'][0]
         self.__verbprint(2, self.nparttot, self.nblocks, self.iblock, number8, number8 * self.nblocks)
         self.npart = number8
         self.npartblocks[self.iblock] = number8
@@ -409,17 +410,17 @@ class SphngBin:
         self.__verbprint(2, "nums", nums)
 
         # Number of sinks
-        buff = self.binfile.readRecord()
-        number8 = np.fromstring(buff[0:8], dtype=self.binfile.ENDIAN + "q")[0]
-        numssink = np.fromstring(buff[8:40], dtype=self.binfile.ENDIAN + "i")
+        buff = self.binfile.read_record([('number8', 'i8'), ('nums', 'i4', (8))])
+        number8 = buff['number8'][0]
+        numssink = buff['nums'][0]
         self.__verbprint(2, "numssink", numssink)
         self.nptmass = number8
 
         # Radiative transfer bits
         if self.numberarray == 3:
-            buff = self.binfile.readRecord()
-            number8 = np.fromstring(buff[0:8], dtype=self.binfile.ENDIAN + "q")[0]
-            numsRT = np.fromstring(buff[8:40], dtype=self.binfile.ENDIAN + "i")
+            buff = self.binfile.read_record([('number8', 'i8'), ('nums', 'i4', (8))])
+            number8 = buff['number8'][0]
+            numsRT = buff['nums'][0]
             self.__verbprint(2, "numsRT", numsRT)
 
         ic1 = self.icount
@@ -439,31 +440,31 @@ class SphngBin:
         # Finally, get reading the actually useful data!
         # Start with the timesteps
         if self.tagged:
-            tagi = self.binfile.readRecord()
-        self.isteps[self.icount:self.icount + self.npart] = self.binfile.readInts(prec="i")
+            tagi = self.binfile.read_ints()
+        self.isteps[self.icount:self.icount + self.npart] = self.binfile.read_ints(dtype="i")
         self.__verbprint(2, "isteps", self.isteps[ic1:ic2])
 
         # Skip reading listinactive
         if nums[0] >= 2:
             if self.tagged:
-                self.binfile.readRecord()
+                self.binfile.read_ints()
             self.__verbprint(2, "Skipping listinactive")
-            self.binfile.readRecord()
+            self.binfile.read_ints()
 
         # Read particle phases
         # Another bit of trickery is needed since iphase is integer*1
         if self.tagged:
-            tagi = self.binfile.readRecord()
-        buff = self.binfile.readRecord()
-        self.iphase[self.icount:self.icount + self.npart] = np.fromstring(buff, dtype=self.binfile.ENDIAN + "b")
+            tagi = self.binfile.read_ints()
+        self.iphase[self.icount:self.icount + self.npart] = self.binfile.read_ints(dtype='i1')
         self.__verbprint(2, "iphase", self.iphase[ic1:ic2])
 
         # Particle iuniques, only in versions post-MPI incorporation I believe
         if nums[4] >= 1:
             if self.tagged:
-                self.binfile.readRecord()
-            buff = self.binfile.readRecord()
-            self.iunique[self.icount:self.icount + self.npart] = np.fromstring(buff, dtype=self.binfile.ENDIAN + "q")
+                self.binfile.read_ints()
+            # buff = self.binfile.readRecord()
+            # self.iunique[self.icount:self.icount + self.npart] = np.fromstring(buff, dtype=self.binfile.ENDIAN + "q")
+            self.iunique[self.icount:self.icount + self.npart] = self.binfile.read_ints(dtype='i8')
             self.__verbprint(2, "iunique", self.iunique[ic1:ic2])
 
         # Position, mass, smoothing length
@@ -472,8 +473,8 @@ class SphngBin:
         # arrays CAN be switched to column-major (Fortran) mode.
         for i in range(5):
             if self.tagged:
-                self.binfile.readRecord()
-            self.xyzmh[self.icount:self.icount + self.npart, i] = self.binfile.readReals("d")
+                self.binfile.read_ints()
+            self.xyzmh[self.icount:self.icount + self.npart, i] = self.binfile.read_reals("d")
         self.__verbprint(2, "x:", self.xyzmh[ic1:ic2, 0])
         self.__verbprint(2, "m:", self.xyzmh[ic1:ic2, 3])
         self.__verbprint(2, "h:", self.xyzmh[ic1:ic2, 4])
@@ -481,15 +482,15 @@ class SphngBin:
         # Velocity, internal energy
         for i in range(4):
             if self.tagged:
-                self.binfile.readRecord()
-            self.vxyzu[self.icount:self.icount + self.npart, i] = self.binfile.readReals("d")
+                self.binfile.read_ints()
+            self.vxyzu[self.icount:self.icount + self.npart, i] = self.binfile.read_reals("d")
         self.__verbprint(2, "vx:", self.vxyzu[ic1:ic2, 0])
         self.__verbprint(2, "u:", self.vxyzu[ic1:ic2, 3])
 
         # Rho
         if self.tagged:
-            self.binfile.readRecord()
-        self.rho[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
+            self.binfile.read_ints()
+        self.rho[self.icount:self.icount + self.npart] = self.binfile.read_reals("f")
         self.__verbprint(2, "rho:", self.rho[ic1:ic2])
         iread = 1
 
@@ -498,14 +499,14 @@ class SphngBin:
         if self.igradh:
             if nums[6] >= 2:
                 if self.tagged:
-                    self.binfile.readRecord()
-                self.gradh[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
+                    self.binfile.read_ints()
+                self.gradh[self.icount:self.icount + self.npart] = self.binfile.read_reals("f")
                 self.__verbprint(2, "gradh:", self.gradh[ic1:ic2])
                 iread = iread + 1
             if nums[6] >= 3:
                 if self.tagged:
-                    tagi = self.binfile.readString().strip()
-                self.gradhs[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
+                    tagi = self.binfile.read_record('S16').strip()
+                self.gradhs[self.icount:self.icount + self.npart] = self.binfile.read_reals("f")
                 if self.tagged:
                     # Following line is only good for Python 2.7+
                     # print "{}:".format(tagi), self.gradhs[ic1:ic2]
@@ -515,23 +516,23 @@ class SphngBin:
                 iread = iread + 1
         else:
             if self.tagged:
-                self.binfile.readRecord()
-            self.dgrav[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
+                self.binfile.read_ints()
+            self.dgrav[self.icount:self.icount + self.npart] = self.binfile.read_reals("f")
             self.__verbprint(2, "dgrav:", self.dgrav[ic1:ic2])
             iread = 2
 
         # alphaMM
         if (nums[6] > iread):
             if self.tagged:
-                self.binfile.readRecord()
-            self.alphaMM[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
+                self.binfile.read_ints()
+            self.alphaMM[self.icount:self.icount + self.npart] = self.binfile.read_reals("f")
             self.__verbprint(2, "alphaMM:", self.alphaMM[ic1:ic2])
 
         # potens for Duncan, if they exist
         if nums[6] >= 5:
             if self.tagged:
-                self.binfile.readRecord()
-            self.poten[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
+                self.binfile.read_ints()
+            self.poten[self.icount:self.icount + self.npart] = self.binfile.read_reals("f")
             self.__verbprint(2, "poten:", self.poten[ic1:ic2])
             self.potenavail = True
         else:
@@ -540,43 +541,43 @@ class SphngBin:
         # SINK PARTICLE DATA
         self.__verbprint(2, "Reading sink particle data for", self.nptmass, "sinks.")
         if self.tagged:
-            self.binfile.readRecord()
-        self.listpm[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readInts()
+            self.binfile.read_ints()
+        self.listpm[self.icountsink:self.icountsink + self.nptmass] = self.binfile.read_ints()
         self.listpm = self.listpm - 1  # Change to Python indexing starting at 0.
         if self.tagged:
-            self.binfile.readRecord()
-        self.spinx[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readReals("d")
+            self.binfile.read_ints()
+        self.spinx[self.icountsink:self.icountsink + self.nptmass] = self.binfile.read_reals("d")
         if self.tagged:
-            self.binfile.readRecord()
-        self.spiny[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readReals("d")
+            self.binfile.read_ints()
+        self.spiny[self.icountsink:self.icountsink + self.nptmass] = self.binfile.read_reals("d")
         if self.tagged:
-            self.binfile.readRecord()
-        self.spinz[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readReals("d")
+            self.binfile.read_ints()
+        self.spinz[self.icountsink:self.icountsink + self.nptmass] = self.binfile.read_reals("d")
         if self.tagged:
-            self.binfile.readRecord()
-        self.angaddx[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readReals("d")
+            self.binfile.read_ints()
+        self.angaddx[self.icountsink:self.icountsink + self.nptmass] = self.binfile.read_reals("d")
         if self.tagged:
-            self.binfile.readRecord()
-        self.angaddy[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readReals("d")
+            self.binfile.read_ints()
+        self.angaddy[self.icountsink:self.icountsink + self.nptmass] = self.binfile.read_reals("d")
         if self.tagged:
-            self.binfile.readRecord()
-        self.angaddz[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readReals("d")
+            self.binfile.read_ints()
+        self.angaddz[self.icountsink:self.icountsink + self.nptmass] = self.binfile.read_reals("d")
         if self.tagged:
-            self.binfile.readRecord()
-        self.spinadx[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readReals("d")
+            self.binfile.read_ints()
+        self.spinadx[self.icountsink:self.icountsink + self.nptmass] = self.binfile.read_reals("d")
         if self.tagged:
-            self.binfile.readRecord()
-        self.spinady[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readReals("d")
+            self.binfile.read_ints()
+        self.spinady[self.icountsink:self.icountsink + self.nptmass] = self.binfile.read_reals("d")
         if self.tagged:
-            self.binfile.readRecord()
-        self.spinadz[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readReals("d")
+            self.binfile.read_ints()
+        self.spinadz[self.icountsink:self.icountsink + self.nptmass] = self.binfile.read_reals("d")
 
         # If there is another real array, it's sink_create_time which is used for
         # supernova runs. Read it.
         if numssink[5] == 10:
             if self.tagged:
-                self.binfile.readRecord()
-            self.sink_create_time[self.icountsink:self.icountsink + self.nptmass] = self.binfile.readReals("d")
+                self.binfile.read_ints()
+            self.sink_create_time[self.icountsink:self.icountsink + self.nptmass] = self.binfile.read_reals("d")
 
         # This point onwards is a mystery; I've commented out the next few lines as they seem to
         # not be represented in a 'modern' rdump.F.
@@ -585,8 +586,8 @@ class SphngBin:
         #      self.binfile.readRecord()
         for i in range(numssink[7]):
             if self.tagged:
-                self.binfile.readRecord()
-            self.binfile.readRecord()
+                self.binfile.read_ints()
+            self.binfile.read_ints()
 
         # THE NEXT SECTION OF CODE IS ONLY USED WITH RT RUNS and IS NOT updated for tags.
         # I think it's been wrong since the old original F77 code and no one's bothered with
@@ -594,29 +595,29 @@ class SphngBin:
         if self.numberarray == 3:
             self.__verbprint(2, "Reading RT data...", self.numberarray)
             if numsRT[2] == 1:
-                self.nneigh[self.icount:self.icount + self.npart] = self.binfile.readInts("h")
-            self.e[self.icount:self.icount + self.npart] = self.binfile.readReals("d")
-            self.rkappa[self.icount:self.icount + self.npart] = self.binfile.readReals("d")
-            self.cv[self.icount:self.icount + self.npart] = self.binfile.readReals("d")
-            self.rlambda[self.icount:self.icount + self.npart] = self.binfile.readReals("d")
-            self.edd[self.icount:self.icount + self.npart] = self.binfile.readReals("d")
+                self.nneigh[self.icount:self.icount + self.npart] = self.binfile.read_ints("h")
+            self.e[self.icount:self.icount + self.npart] = self.binfile.read_reals("d")
+            self.rkappa[self.icount:self.icount + self.npart] = self.binfile.read_reals("d")
+            self.cv[self.icount:self.icount + self.npart] = self.binfile.read_reals("d")
+            self.rlambda[self.icount:self.icount + self.npart] = self.binfile.read_reals("d")
+            self.edd[self.icount:self.icount + self.npart] = self.binfile.read_reals("d")
             if numsRT[5] == 8:
                 for i in range(3):
-                    self.force[self.icount:self.icount + self.npart, i] = self.binfile.readReals("d")
+                    self.force[self.icount:self.icount + self.npart, i] = self.binfile.read_reals("d")
             if numsRT[6] == 1:
-                self.dlnTdlnP[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
+                self.dlnTdlnP[self.icount:self.icount + self.npart] = self.binfile.read_reals("f")
             if numsRT[6] == 13 or numsRT[6] == 14:
-                self.dlnTdlnP[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
+                self.dlnTdlnP[self.icount:self.icount + self.npart] = self.binfile.read_reals("f")
                 if numsRT[6] == 11:
-                    self.adiabaticgradient[self.icount:self.icount + self.npart] = self.binfile.readReals("f")
+                    self.adiabaticgradient[self.icount:self.icount + self.npart] = self.binfile.read_reals("f")
                 for i in range(3):
-                    self.pressure[self.icount:self.icount + self.npart, i] = self.binfile.readReals("f")
+                    self.pressure[self.icount:self.icount + self.npart, i] = self.binfile.read_reals("f")
                 for i in range(3):
-                    self.viscosity[self.icount:self.icount + self.npart, i] = self.binfile.readReals("f")
+                    self.viscosity[self.icount:self.icount + self.npart, i] = self.binfile.read_reals("f")
                 for i in range(3):
-                    self.gravity[self.icount:self.icount + self.npart, i] = self.binfile.readReals("f")
+                    self.gravity[self.icount:self.icount + self.npart, i] = self.binfile.read_reals("f")
                 for i in range(3):
-                    self.radpres[self.icount:self.icount + self.npart, i] = self.binfile.readReals("f")
+                    self.radpres[self.icount:self.icount + self.npart, i] = self.binfile.read_reals("f")
 
         # Finally, we correctly update the icounts and iblock.
         if self.contiguous:
@@ -660,12 +661,13 @@ class SphngBin:
 
 if __name__ == "__main__":
     print "SPHNGYS DEMO CODE\n"
-    ftest = "/Users/william/PycharmProjects/density_on_sky/data/RUNI180"
+    ftest = "/mnt/arvienen/jim_dale_supernovae/FINALRUN/runi_control/Knormal5_Tflat5_poten_restart/RUNL181"
+    #ftest = "/Users/william/PycharmProjects/density_on_sky/data/RUNI180"
     # ftest = "../data/EMCD007"  # tagged file
     # ftest = "../data/TES2497"
     # ftest = "CLOD010"  # normal file
     # ftest = "../data/GCBG061"  # MPI file
-    testfile = SphngBin(fname=ftest, contiguous=True)
+    testfile = SphngBin(fname=ftest, contiguous=True, verbosity=2)
     iout = testfile.read_header()
     print "readHeader returned", iout
 
